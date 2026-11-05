@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AGENT02 · Agent Simulator</title>
+  <style>
+    :root { font-family: Inter, system-ui, Arial, sans-serif; color: #172033; background: #f4f6fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1100px; margin: 0 auto; padding: 28px 18px 48px; }
+    h1 { margin: 0 0 8px; font-size: clamp(25px, 4vw, 34px); }
+    .muted { color: #647087; }
+    .layout { display: grid; grid-template-columns: 320px 1fr; gap: 18px; margin-top: 22px; }
+    .card { background: white; border: 1px solid #e2e7f0; border-radius: 16px; padding: 20px; box-shadow: 0 4px 18px #17203308; }
+    h2 { margin: 0 0 14px; font-size: 18px; }
+    .choice { display: block; border: 1px solid #dce2ed; border-radius: 11px; padding: 13px; margin: 10px 0; cursor: pointer; }
+    .choice:has(input:checked) { border-color: #4668d8; background: #f0f4ff; }
+    button { border: 0; border-radius: 10px; padding: 12px 15px; font-weight: 650; cursor: pointer; }
+    .primary { background: #3159cc; color: white; width: 100%; margin-top: 8px; }
+    .secondary { background: #edf0f6; color: #27334b; }
+    .agents { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .agent { border-radius: 12px; padding: 16px; background: #f6f8fc; }
+    .agent.rl { border-top: 4px solid #4668d8; }
+    .agent.rule { border-top: 4px solid #d28a32; }
+    .big { font-size: 20px; font-weight: 750; margin: 8px 0; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+    .stat { background: #f6f8fc; padding: 13px; border-radius: 11px; }
+    .stat strong { display: block; font-size: 20px; margin-top: 5px; }
+    .table-wrap { overflow-x: auto; margin-top: 18px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
+    th, td { text-align: left; padding: 10px 11px; border-bottom: 1px solid #e8ecf3; }
+    th { background: #f7f8fb; }
+    .flash { background: #fff0e8; padding: 10px; border-radius: 8px; margin: 12px 0; }
+    details { margin-top: 18px; }
+    pre { overflow-x: auto; font-size: 12px; background: #f7f8fb; padding: 12px; border-radius: 8px; }
+    @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } .agents { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>AGENT02: Agent Simulator</h1>
+  <div class="muted">Mô phỏng từng lượt giữa Q-learning agent và rule-based agent trong môi trường thương mại điện tử.</div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}<div class="flash">{{ message }}</div>{% endfor %}
+  {% endwith %}
+
+  <div class="layout">
+    <section class="card">
+      <h2>Chạy lượt tiếp theo</h2>
+      <p class="muted">Lượt {{ step }} · Chọn mức cầu cho lượt này. Hai agent sẽ chọn hành động sau khi nhận trạng thái.</p>
+      <form action="{{ url_for('run_step') }}" method="post">
+        <label class="choice">
+          <input type="radio" name="demand" value="0" checked>
+          <strong>Low demand</strong><br><span class="muted">10 khách hàng</span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="demand" value="1">
+          <strong>High demand</strong><br><span class="muted">20 khách hàng</span>
+        </label>
+        <button class="primary" type="submit">Chạy 1 lượt →</button>
+      </form>
+      <form action="{{ url_for('reset') }}" method="post" style="margin-top:10px">
+        <button class="secondary" type="submit">Đặt lại mô phỏng</button>
+      </form>
+      <p class="muted" style="font-size:12px;margin-top:16px">RL agent dùng greedy policy (tắt exploration). Mỗi lượt dùng số đơn hàng ngẫu nhiên theo xác suất chuyển đổi.</p>
+    </section>
+
+    <section class="card">
+      <h2>Kết quả tích lũy</h2>
+      <div class="agents">
+        <div class="agent rl">
+          <div class="muted">Agent 1</div><strong>Q-learning RL</strong>
+          <div class="big">{{ '%.2f'|format(total_rewards[0]) }}</div>
+          <div class="muted">Tổng lợi nhuận</div>
+        </div>
+        <div class="agent rule">
+          <div class="muted">Agent 2</div><strong>Rule-based</strong>
+          <div class="big">{{ '%.2f'|format(total_rewards[1]) }}</div>
+          <div class="muted">Tổng lợi nhuận</div>
+        </div>
+      </div>
+      {% if history %}
+      {% set last = history[-1] %}
+      <h2 style="margin-top:22px">Kết quả lượt {{ last.step }}</h2>
+      <div class="agents">
+        <div class="agent rl"><strong>RL Agent</strong><div class="big">{{ last.rl_action }}</div><span class="muted">{{ last.rl_sales }} đơn · Lợi nhuận {{ last.rl_reward }}</span></div>
+        <div class="agent rule"><strong>Rule-based Agent</strong><div class="big">{{ last.rule_action }}</div><span class="muted">{{ last.rule_sales }} đơn · Lợi nhuận {{ last.rule_reward }}</span></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><span class="muted">Mức cầu</span><strong>{{ last.demand }}</strong></div>
+        <div class="stat"><span class="muted">Khách hàng</span><strong>{{ last.customers }}</strong></div>
+        <div class="stat"><span class="muted">Tỷ lệ chuyển đổi RL</span><strong>{{ last.rl_conversion }}</strong></div>
+        <div class="stat"><span class="muted">Tỷ lệ chuyển đổi Rule</span><strong>{{ last.rule_conversion }}</strong></div>
+      </div>
+      {% else %}
+      <p class="muted" style="margin-top:22px">Chưa có lượt mô phỏng. Chọn mức cầu rồi nhấn “Chạy 1 lượt”.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="card" style="margin-top:18px">
+    <h2>Lịch sử mô phỏng</h2>
+    {% if history %}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Lượt</th><th>Cầu</th><th>RL action</th><th>Rule action</th><th>Đơn RL</th><th>Đơn Rule</th><th>Lợi nhuận RL</th><th>Lợi nhuận Rule</th></tr></thead>
+      <tbody>{% for row in history|reverse %}<tr>
+        <td>{{ row.step }}</td><td>{{ row.demand }}</td><td>{{ row.rl_action }}</td><td>{{ row.rule_action }}</td>
+        <td>{{ row.rl_sales }}</td><td>{{ row.rule_sales }}</td><td>{{ row.rl_reward }}</td><td>{{ row.rule_reward }}</td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="muted">Lịch sử sẽ xuất hiện sau lượt đầu tiên.</p>{% endif %}
+  </section>
+
+  <details class="card">
+    <summary><strong>Q-table của RL agent</strong></summary>
+    <p class="muted">Q[demand][hành động trước đó của đối thủ][action], action 0 = không giảm giá, action 1 = giảm giá.</p>
+    <pre>{{ q_table }}</pre>
+  </details>
+</main>
+</body>
+</html>
